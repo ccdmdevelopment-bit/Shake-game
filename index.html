@@ -54,6 +54,15 @@ body{font-family:var(--body);color:var(--ink);touch-action:none;-webkit-user-sel
 #pauseBtn i{display:block;height:6px;background:#fff;border-radius:1px;box-shadow:0 1px 0 rgba(0,0,0,.15)}
 #worlds .card{width:min(900px,100%)}
 .worlds{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;text-align:left}
+.mapcard{display:flex;flex-direction:column;gap:7px;text-align:left;color:#fff;background:var(--c);border:0;padding:14px 16px 16px;cursor:pointer;
+  font-family:var(--body);clip-path:polygon(0 0,100% 3%,99% 100%,1% 97%)}
+.mapcard .mname{font-family:var(--display);font-size:24px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline;gap:8px;letter-spacing:.5px}
+.mapcard .mname small{font-family:var(--body);font-weight:600;font-size:14px;letter-spacing:1px}
+.mapcard .mtag{font-weight:500;font-size:15px;margin-top:-4px}
+.mapcard .mbar{height:10px;background:rgba(255,255,255,.28)}
+.mapcard .mbar i{display:block;height:100%;background:var(--lime)}
+.mapcard .mfoot{display:flex;justify-content:space-between;gap:10px;font-weight:600;font-size:15px}
+.mapcard:disabled{cursor:not-allowed;filter:saturate(.35) brightness(.9)}
 .world{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;color:#fff;clip-path:polygon(0 0,100% 3%,99% 100%,1% 97%)}
 .world .wname{font-family:var(--display);font-size:24px;text-transform:uppercase;display:flex;justify-content:space-between;gap:8px;align-items:baseline;letter-spacing:.5px}
 .world .wname small{font-family:var(--body);font-weight:600;font-size:15px}
@@ -128,7 +137,7 @@ body{font-family:var(--body);color:var(--ink);touch-action:none;-webkit-user-sel
     <div class="actions">
       <button class="btn big" id="playBtn"><span>Play</span><small id="playSub">Level 1</small></button>
       <div class="sub">
-        <button class="btn small ghost" id="levelsBtnT">Levels</button>
+        <button class="btn small ghost" id="levelsBtnT">Maps</button>
         <button class="btn small alt" id="shakesBtn">Shakes</button>
         <button class="btn small pinkb" id="howBtn">How to Play</button>
       </div>
@@ -154,20 +163,22 @@ body{font-family:var(--body);color:var(--ink);touch-action:none;-webkit-user-sel
       <li><b>Stop in the green</b><span>Land 3 shakes per level. After each one, the counter shuffles into a new course.</span></li>
     </ol>
     <div class="hazards">
-      <span><i style="background:#7a1f2a"></i>Syrup &amp; sand slow you</span>
+      <span><i style="background:#7a1f2a"></i>Sticky stuff slows you</span>
+      <span><i style="background:#ef428e"></i>Ramps slow, then fling</span>
+      <span><i style="background:#ffd23a"></i>Jumps launch you</span>
       <span><i style="background:#9fe6ff"></i>Ice &amp; oil slide far</span>
       <span><i style="background:#2b282c"></i>Gaps need speed</span>
-      <span><i style="background:#ffd23a"></i>Belts push you</span>
+      <span><i style="background:#4a5368"></i>Belts push you</span>
       <span><i style="background:#e53a41"></i>Domes, crabs &amp; lasers: wait</span>
     </div>
-    <p class="muted">No misses earns 3 diamonds. Diamonds unlock new shakes.</p>
+    <p class="muted">Each map has 30 levels. Beat them all to unlock the next map. No misses earns 3 diamonds, and diamonds unlock new shakes.</p>
     <div class="row"><button class="btn" id="howBack">Got it</button></div>
   </div></div>
 </div>
 
 <div id="worlds" class="screen" hidden>
   <div class="card"><div class="inner">
-    <h2>Pick a Counter</h2>
+    <h2>Pick a Map</h2>
     <div class="worlds" id="worldList"></div>
     <div class="row"><button class="btn ghost" id="backTitle">Back</button></div>
   </div></div>
@@ -179,7 +190,7 @@ body{font-family:var(--body);color:var(--ink);touch-action:none;-webkit-user-sel
     <div class="row"><button class="btn" id="resumeBtn">Resume</button></div>
     <div class="row">
       <button class="btn alt" id="restartBtn">Restart</button>
-      <button class="btn ghost" id="levelsBtn">Levels</button>
+      <button class="btn ghost" id="levelsBtn">Maps</button>
     </div>
     <div class="toggles">
       <button class="icon" id="musT2" aria-pressed="true">♫ Music</button>
@@ -194,7 +205,7 @@ body{font-family:var(--body);color:var(--ink);touch-action:none;-webkit-user-sel
     <div class="stars" id="doneStars"></div>
     <p id="doneMsg"></p>
     <div class="row">
-      <button class="btn ghost" id="doneLevels">Levels</button>
+      <button class="btn ghost" id="doneLevels">Maps</button>
       <button class="btn alt" id="doneRetry">Retry</button>
       <button class="btn" id="doneNext">Next</button>
     </div>
@@ -217,48 +228,44 @@ const LAND_TOL = 22;      // how far a shake can dip and still land across a gap
 const SPILL_V = 430;      // hitting a solid thing faster than this tips the shake
 const START_X = 120;
 const SHAKES_PER_LEVEL = 3;
-const SURF_DECEL = { syrup: 1150, sand: 1000, ice: 60, wet: 85, oil: 45 };
-const SURF_NAME = { syrup: 'syrup', sand: 'sand', ice: 'ice', wet: 'wet boards', oil: 'oil' };
+const SLOPE_G = 1500;     // pull along a ramp's slope
+const SURF_DECEL = { syrup: 1150, sand: 1000, goo: 1100, ice: 60, wet: 85, oil: 45 };
 
+// Each map unlocks the next once all of its levels are beaten.
+// intro: the level (0-based, within the map) where each hazard first shows up.
 const WORLDS = [
-  { name: 'Main Street Diner', theme: 'diner', decel: 320, meter: 3.0, flavor: 'choc',   song: 0, tag: 'Syrup spills & pie domes' },
-  { name: 'Midnight Neon',     theme: 'neon',  decel: 320, meter: 2.7, flavor: 'straw', song: 1, tag: 'Ice slicks & counter gaps' },
-  { name: 'Boardwalk Shack',   theme: 'beach', decel: 340, meter: 2.45, flavor: 'mint',  song: 2, tag: 'Sand, wet boards & crabs' },
-  { name: 'Orbit Café',        theme: 'space', decel: 230, meter: 2.25, flavor: 'galaxy',song: 3, tag: 'Conveyor belts & lasers' },
+  { name: 'Main Street Diner', theme: 'diner', decel: 320, meter: 3.0,  flavor: 'choc',   song: 0, sticky: 'syrup', slick: 'ice', gate: 'dome',
+    tag: 'Syrup, ice, ramps & pie domes', intro: { sticky: 2, ramp: 3, slick: 5, bottle: 6, jump: 7, gate: 10 } },
+  { name: 'Midnight Neon',     theme: 'neon',  decel: 320, meter: 2.75, flavor: 'straw',  song: 1, sticky: 'syrup', slick: 'ice', gate: 'dome',
+    tag: 'Gaps, jumps & slick ice', intro: { gap: 0, slick: 1, ramp: 2, jump: 3, jumpgap: 5, sticky: 6, bottle: 8, gate: 11 } },
+  { name: 'Boardwalk Shack',   theme: 'beach', decel: 340, meter: 2.55, flavor: 'mint',   song: 2, sticky: 'sand', slick: 'wet', gate: 'crab',
+    tag: 'Sand, wet boards & crabs', intro: { sticky: 0, gap: 1, ramp: 2, gate: 3, slick: 4, jump: 5, jumpgap: 7, bottle: 9 } },
+  { name: 'Orbit Café',        theme: 'space', decel: 230, meter: 2.35, flavor: 'galaxy', song: 3, sticky: 'goo', slick: 'oil', gate: 'laser',
+    tag: 'Belts, lasers & low-grip oil', intro: { belt: 0, slick: 1, ramp: 2, gate: 3, gap: 4, jump: 5, jumpgap: 6, sticky: 8, bottle: 10 } },
 ];
-
-// a = start x, b = end x. Zones are [from, to]. Gates cycle open/closed with period p.
-const LEVELS = [
-  // --- Main Street Diner
-  { end: 1150, zone: [760, 1020], tip: 'Hold to wind up — let go to slide!' },
-  { end: 1350, zone: [1000, 1230], tip: 'Each shake gets a new course. Watch the green move!' },
-  { end: 1550, zone: [1180, 1380], surf: [{ k: 'syrup', a: 600, b: 780 }], tip: 'Sticky syrup slows your shake down' },
-  { end: 1600, zone: [1150, 1340], surf: [{ k: 'syrup', a: 480, b: 620 }], obs: [{ k: 'bottle', x: 1378 }], tip: 'Bounce off the ketchup — gently!' },
-  { end: 1800, zone: [1380, 1550], surf: [{ k: 'syrup', a: 1050, b: 1150 }], gates: [{ k: 'dome', x: 800, p: 2.6 }], tip: 'Time it so the pie dome is up' },
-  // --- Midnight Neon
-  { end: 1700, zone: [1280, 1460], surf: [{ k: 'ice', a: 650, b: 1000 }], tip: 'Spilled ice is super slippery' },
-  { end: 1750, zone: [1300, 1470], gaps: [[680, 770]], tip: 'Slide fast enough to hop the gap' },
-  { end: 1800, zone: [1420, 1580], gaps: [[560, 650]], surf: [{ k: 'ice', a: 850, b: 1150 }], obs: [{ k: 'bottle', x: 1618 }] },
-  { end: 1900, zone: [1480, 1640], gaps: [[520, 600], [880, 960]], gates: [{ k: 'dome', x: 1200, p: 2.2 }] },
-  { end: 1880, zone: [1650, 1800], gaps: [[820, 910]], surf: [{ k: 'ice', a: 380, b: 700 }, { k: 'syrup', a: 1250, b: 1380 }], tip: 'Careful — the counter ends right after the green' },
-  // --- Boardwalk Shack
-  { end: 1700, zone: [1250, 1420], surf: [{ k: 'sand', a: 620, b: 800 }], tip: 'Sand grabs the glass' },
-  { end: 1750, zone: [1330, 1480], gaps: [[520, 620]], surf: [{ k: 'sand', a: 900, b: 1000 }] },
-  { end: 1800, zone: [1380, 1530], gates: [{ k: 'crab', x: 900, p: 2.8 }], obs: [{ k: 'bottle', x: 1570 }], tip: 'Wait for the crab to duck' },
-  { end: 1850, zone: [1480, 1630], gaps: [[440, 530], [960, 1040]], surf: [{ k: 'wet', a: 600, b: 880 }] },
-  { end: 1950, zone: [1760, 1890], gaps: [[700, 790]], surf: [{ k: 'sand', a: 450, b: 600 }, { k: 'wet', a: 1050, b: 1300 }], gates: [{ k: 'crab', x: 1450, p: 2.4 }] },
-  // --- Orbit Café
-  { end: 1800, zone: [1400, 1560], belts: [{ a: 600, b: 1000, s: 160 }], tip: 'Belts push your shake along' },
-  { end: 1800, zone: [1300, 1450], belts: [{ a: 650, b: 1100, s: -170 }], tip: 'This belt runs backwards!' },
-  { end: 1700, zone: [1480, 1620], gates: [{ k: 'laser', x: 750, p: 2.2 }], belts: [{ a: 1000, b: 1300, s: 130 }], tip: 'Lasers zap shakes. Wait for it to switch off' },
-  { end: 1850, zone: [1580, 1720], gaps: [[560, 660]], belts: [{ a: 900, b: 1200, s: -140 }], gates: [{ k: 'laser', x: 1350, p: 2.0 }] },
-  { end: 2150, zone: [1960, 2090], belts: [{ a: 450, b: 700, s: 150 }, { a: 1300, b: 1550, s: -150 }], gaps: [[850, 950]], surf: [{ k: 'oil', a: 1100, b: 1250 }], gates: [{ k: 'laser', x: 1700, p: 1.9 }], tip: 'Final order. Good luck!' },
-];
+const LEVELS_PER_MAP = 30;
+const LEVEL_COUNT = WORLDS.length * LEVELS_PER_MAP;
+const TIPS = {
+  first: 'Hold to wind up — let go to slide!',
+  second: 'Each shake gets a new course. Watch the green move!',
+  sticky: 'Sticky patches grab the glass and slow it down',
+  slick: 'Slick patches barely slow you at all',
+  ramp: 'Ramps slow you going up and fling you coming down',
+  jump: 'Hit the jump fast and the shake flies',
+  gap: 'Slide fast enough to hop the gap',
+  jumpgap: 'Use the jump to clear the gap',
+  bottle: 'Bounce off it gently, or it spills!',
+  belt: 'Belts push your shake along. Some run backwards',
+  dome: 'Time it so the pie dome is up',
+  crab: 'Wait for the crab to duck',
+  laser: 'Lasers zap shakes. Wait for it to switch off',
+};
 
 // ---------- persistence ----------
-const SAVE_KEY = 'shakeSlider.v1';
-let save = { stars: LEVELS.map(() => 0), music: true, sfx: true, flavor: 'mix' };
+const SAVE_KEY = 'shakeSlider.v2';
+let save = { stars: Array(LEVEL_COUNT).fill(0), music: true, sfx: true, flavor: 'mix' };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && Array.isArray(s.stars)) save = Object.assign(save, s); } catch (e) {}
+while (save.stars.length < LEVEL_COUNT) save.stars.push(0);
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 
 // ---------- helpers ----------
@@ -402,19 +409,95 @@ const Sound = (() => {
 /* =====================================================================
    LEVEL + PHYSICS
    ===================================================================== */
-function buildLevel(idx, noCourses) {
-  const wi = Math.floor(idx / 5), W = WORLDS[wi], L = LEVELS[idx];
-  const gaps = (L.gaps || []).map(g => g.slice()).sort((a, b) => a[0] - b[0]);
-  const lv = {
-    idx, wi, world: W, end: L.end, zone: L.zone.slice(), segs: [], gaps, tip: L.tip || '',
-    surf: (L.surf || []).map(o => ({ ...o })), belts: (L.belts || []).map(o => ({ ...o })),
-    obs: (L.obs || []).map(o => ({ ...o, hw: 15 })),
-    gates: (L.gates || []).map(g => ({ ...g, hw: g.k === 'laser' ? 5 : g.k === 'crab' ? 26 : 34, open: 1, wasBlocked: false })),
-    decel: W.decel, meter: W.meter - (idx % 5) * .06,
+// ---------- level generator ----------
+// Levels are built from a seed, so level N of a map is the same every time it's played.
+// Each candidate layout is simulated; it's kept only if enough of the power meter lands in the green.
+const levelCache = new Map();
+function levelDef(idx) {
+  if (!levelCache.has(idx)) levelCache.set(idx, generateLevel(idx));
+  return levelCache.get(idx);
+}
+function emptyLevel(idx) {
+  const wi = Math.floor(idx / LEVELS_PER_MAP), W = WORLDS[wi], li = idx % LEVELS_PER_MAP;
+  return {
+    idx, wi, li, world: W, end: 0, zone: [0, 0], segs: [], gaps: [], surf: [], belts: [], ramps: [], obs: [], gates: [],
+    decel: W.decel, meter: W.meter - li / (LEVELS_PER_MAP - 1) * .45, tip: '',
   };
+}
+function generateLevel(idx) {
+  const lv0 = emptyLevel(idx), W = lv0.world, li = lv0.li, wi = lv0.wi;
+  const local = li / (LEVELS_PER_MAP - 1), d = (wi * LEVELS_PER_MAP + li) / (LEVEL_COUNT - 1);
+  const pool = Object.keys(W.intro).filter(k => W.intro[k] <= li);
+  const fresh = Object.keys(W.intro).filter(k => W.intro[k] === li);
+  const winMin = lerp(.15, .055, d);
+  let best = null;
+  for (let attempt = 0; attempt < 70; attempt++) {
+    const rnd = mulberry32(idx * 15485863 + attempt * 2654435761);
+    const lv = emptyLevel(idx);
+    // which hazards go on this counter
+    let n = wi === 0 && li < 2 ? 0 : Math.round(lerp(1, 4.4, local) + wi * .35 + rnd() * .8 - .4);
+    n = clamp(n - Math.floor(attempt / 18), fresh.length ? 1 : 0, 6);
+    const kinds = fresh.filter(k => k !== 'bottle');
+    const counted = pool.filter(k => k !== 'bottle');
+    let gates = kinds.includes('gate') ? 1 : 0;
+    for (let guard = 0; kinds.length < n && counted.length && guard < 40; guard++) {
+      const k = counted[Math.floor(rnd() * counted.length)];
+      if (k === 'gate') { if (gates >= (li >= 20 ? 2 : 1)) continue; gates++; }
+      kinds.push(k);
+    }
+    for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
+    // lay them out along the counter
+    let x = START_X + 210 + rnd() * 60;
+    for (const k of kinds) {
+      if (k === 'sticky' || k === 'slick') {
+        const len = k === 'sticky' ? 100 + rnd() * 110 : 170 + rnd() * 190;
+        lv.surf.push({ k: k === 'sticky' ? W.sticky : W.slick, a: x, b: x + len }); x += len;
+      } else if (k === 'ramp') {
+        const len = 190 + rnd() * 110;
+        lv.ramps.push({ k: 'ramp', a: x, b: x + len, h: lerp(24, 54, d) * (.8 + rnd() * .35) }); x += len;
+      } else if (k === 'jump' || k === 'jumpgap') {
+        const len = 120 + rnd() * 50;
+        lv.ramps.push({ k: 'jump', a: x, b: x + len, h: 20 + rnd() * 16 }); x += len;
+        if (k === 'jumpgap') { const g = 100 + rnd() * 60 + d * 40; lv.gaps.push([x + 2, x + 2 + g]); x += g + 2; }
+      } else if (k === 'gap') {
+        const g = 70 + rnd() * 35; lv.gaps.push([x, x + g]); x += g;
+      } else if (k === 'gate') {
+        x += 45; lv.gates.push({ k: W.gate, x, p: lerp(2.9, 1.8, d) * (.9 + rnd() * .2), o: rnd() * 3 }); x += 45;
+      } else if (k === 'belt') {
+        const len = 220 + rnd() * 120, s = (li >= 8 && rnd() < .45 ? -1 : 1) * (110 + rnd() * 60);
+        lv.belts.push({ a: x, b: x + len, s }); x += len;
+      }
+      x += 90 + rnd() * 110;
+    }
+    const w = lerp(285, 115, d) * (.9 + rnd() * .2);
+    const z0 = Math.max(x + 40 + rnd() * 120, 720 + local * 520 + rnd() * 120);
+    lv.zone = [z0, z0 + w];
+    const backstop = fresh.includes('bottle') || (pool.includes('bottle') && rnd() < .35);
+    if (backstop) { const bx = lv.zone[1] + 38 + rnd() * 30; lv.obs.push({ k: 'bottle', x: bx }); lv.end = bx + 110; }
+    else lv.end = lv.zone[1] + lerp(260, 55, d) * (.8 + rnd() * .4);
+    lv.gaps.sort((a, b) => a[0] - b[0]);
+    lv.obs.forEach(o => o.hw = 15);
+    lv.gates.forEach(g => { g.hw = g.k === 'laser' ? 5 : g.k === 'crab' ? 26 : 34; g.open = 1; });
+    rebuildSegs(lv);
+    lv.vmax = calcVmax(lv);
+    const win = landWindow(lv, 200);
+    if (!best || win > best.win) best = { lv, win };
+    if (win >= winMin) break;
+  }
+  const lv = best.lv;
+  const tipKey = li === 0 && wi === 0 ? 'first' : li === 1 && wi === 0 ? 'second' : fresh.find(k => TIPS[k]);
+  lv.tip = tipKey ? TIPS[tipKey === 'gate' ? W.gate : tipKey] : '';
+  return lv;
+}
+function buildLevel(idx, noCourses) {
+  const def = levelDef(idx), lv = emptyLevel(idx);
+  Object.assign(lv, {
+    end: def.end, zone: def.zone.slice(), gaps: def.gaps.map(g => g.slice()), tip: def.tip,
+    surf: def.surf.map(o => ({ ...o })), belts: def.belts.map(o => ({ ...o })), ramps: def.ramps.map(o => ({ ...o })),
+    obs: def.obs.map(o => ({ ...o })), gates: def.gates.map(o => ({ ...o, open: 1 })), vmax: def.vmax,
+  });
   rebuildSegs(lv);
-  lv.vmax = calcVmax(lv);
-  if (!noCourses) lv.courses = makeCourses(lv);
+  if (!noCourses) { if (!def.courses) def.courses = makeCourses(lv); lv.courses = def.courses; }
   return lv;
 }
 function rebuildSegs(lv) {
@@ -426,7 +509,7 @@ function rebuildSegs(lv) {
 // ---------- courses: every shake in a level gets the same counter, rearranged ----------
 function geomOf(lv) {
   return [lv.zone[0], lv.zone[1], lv.end, ...lv.gaps.flat(), ...lv.surf.flatMap(o => [o.a, o.b]),
-    ...lv.belts.flatMap(o => [o.a, o.b]), ...lv.obs.map(o => o.x), ...lv.gates.map(o => o.x)];
+    ...lv.belts.flatMap(o => [o.a, o.b]), ...lv.ramps.flatMap(o => [o.a, o.b]), ...lv.obs.map(o => o.x), ...lv.gates.map(o => o.x)];
 }
 function applyGeom(lv, g) {
   let i = 0;
@@ -434,6 +517,7 @@ function applyGeom(lv, g) {
   for (const o of lv.gaps) { o[0] = g[i++]; o[1] = g[i++]; }
   for (const o of lv.surf) { o.a = g[i++]; o.b = g[i++]; }
   for (const o of lv.belts) { o.a = g[i++]; o.b = g[i++]; }
+  for (const o of lv.ramps) { o.a = g[i++]; o.b = g[i++]; }
   for (const o of lv.obs) o.x = g[i++];
   for (const o of lv.gates) o.x = g[i++];
   rebuildSegs(lv);
@@ -447,41 +531,49 @@ function landWindow(lv, n = 300) {
   for (let k = 0; k <= n; k++) { const r = simThrow(lv, powerToV(lv, k / n)); if (!r.fell && r.x >= lv.zone[0] && r.x <= lv.zone[1]) ok++; }
   return ok / n;
 }
-// Course 1 is the hand-made layout. Courses 2 and 3 slide the green zone along the counter,
+// Course 1 is the level's own layout. Courses 2 and 3 slide the green zone along the counter,
 // trim it a little, and nudge every hazard. A seeded shuffle keeps them the same every play,
 // and each candidate is simulated so it stays about as winnable as the original.
 function makeCourses(lv) {
-  const base = geomOf(lv), baseWin = landWindow(lv), [z0, z1] = lv.zone;
+  const base = geomOf(lv), baseWin = landWindow(lv, 200), [z0, z1] = lv.zone;
   const courses = [{ g: base, o: lv.gates.map(g => g.o || 0), vmax: lv.vmax, win: baseWin }];
+  // a gap that starts right where a jump ends travels with its jump
+  const linked = lv.gaps.map(g => lv.ramps.findIndex(r => r.k === 'jump' && g[0] >= r.b - 1 && g[0] - r.b < 30));
   for (let stage = 1; stage < SHAKES_PER_LEVEL; stage++) {
     const rnd = mulberry32(lv.idx * 7919 + stage * 104729);
     let pick = null;
-    for (let tries = 0; tries < 60 && !pick; tries++) {
+    for (let tries = 0; tries < 50 && !pick; tries++) {
       applyGeom(lv, base);
       const w = (z1 - z0) * (1 - stage * .04 - rnd() * .04), c = (z0 + z1) / 2 + (rnd() * 2 - 1) * 200;
       const nz0 = c - w / 2, nz1 = c + w / 2, lim = nz0 - 50;
       if (nz0 < START_X + 380) continue;
       const anchor = x => nz1 + (x - z1);          // things past the green ride along with it
       let bad = false;
-      const shift = (a, b) => {
+      const shift = (a, b, d) => {
         if (a >= z1) return [anchor(a), anchor(b)];
-        const d = (rnd() * 2 - 1) * 130; let na = a + d, nb = b + d;
+        let na = a + d, nb = b + d;
         if (nb > lim) { na -= nb - lim; nb = lim; }
         if (na < START_X + 90) bad = true;
         return [na, nb];
       };
-      const gapSpans = [], other = [];
+      const nudge = () => (rnd() * 2 - 1) * 130;
+      const rampD = lv.ramps.map(nudge);
+      const other = [];
       lv.zone = [nz0, nz1]; lv.end = anchor(lv.end);
-      for (const o of lv.gaps) { [o[0], o[1]] = shift(o[0], o[1]); gapSpans.push(o); }
-      for (const o of [...lv.surf, ...lv.belts]) { [o.a, o.b] = shift(o.a, o.b); other.push([o.a, o.b]); }
-      for (const o of [...lv.obs, ...lv.gates]) { o.x = shift(o.x, o.x)[0]; other.push([o.x - 45, o.x + 45]); }
+      lv.ramps.forEach((o, i) => { [o.a, o.b] = shift(o.a, o.b, rampD[i]); other.push([o.a, o.b, o.k === 'jump' ? o : null]); });
+      lv.gaps.forEach((o, i) => { [o[0], o[1]] = shift(o[0], o[1], linked[i] >= 0 ? rampD[linked[i]] : nudge()); });
+      for (const o of [...lv.surf, ...lv.belts]) { [o.a, o.b] = shift(o.a, o.b, nudge()); other.push([o.a, o.b]); }
+      for (const o of [...lv.obs, ...lv.gates]) { o.x = shift(o.x, o.x, nudge())[0]; other.push([o.x - 45, o.x + 45]); }
       const hit = (p, q, m) => p[0] < q[1] + m && q[0] < p[1] + m;
-      for (const g of gapSpans) {
-        if (other.some(o => hit(g, o, 25)) || gapSpans.some(h => h !== g && hit(g, h, 80))) bad = true;
-      }
+      for (let i = 0; i < other.length; i++) for (let j = i + 1; j < other.length; j++) if (hit(other[i], other[j], 20)) bad = true;
+      lv.gaps.forEach((g, i) => {
+        if (lv.gaps.some(h => h !== g && hit(g, h, 80))) bad = true;
+        if (other.some(o => hit(g, o, 25) && !(o[2] && o[2] === lv.ramps[linked[i]]))) bad = true;
+      });
       if (bad) continue;
+      lv.gaps.sort((a, b) => a[0] - b[0]);
       rebuildSegs(lv); lv.vmax = calcVmax(lv);
-      const win = landWindow(lv);
+      const win = landWindow(lv, 200);
       if (win >= Math.max(.04, baseWin * .72)) pick = { g: geomOf(lv), o: lv.gates.map(g => rnd() * g.p), vmax: lv.vmax, win };
     }
     courses.push(pick || courses[0]);
@@ -496,10 +588,27 @@ function decelAt(lv, x) {
   return lv.decel;
 }
 function beltAt(lv, x) { for (const b of lv.belts) if (x >= b.a && x <= b.b) return b.s; return 0; }
+// ramps are smooth humps; jumps curve up to a lip and then drop straight down
+function rampH(r, x) {
+  const u = (x - r.a) / (r.b - r.a);
+  if (u <= 0 || u >= 1) return 0;
+  return r.k === 'jump' ? r.h * u * u : r.h * (1 - Math.cos(u * 2 * Math.PI)) / 2;
+}
+function heightAt(lv, x) { for (const r of lv.ramps) if (x > r.a && x < r.b) return rampH(r, x); return 0; }
+function slopeAt(lv, x) {
+  for (const r of lv.ramps) if (x > r.a && x < r.b) {
+    const L = r.b - r.a, u = (x - r.a) / L;
+    return r.k === 'jump' ? 2 * r.h * u / L : r.h * Math.PI * Math.sin(u * 2 * Math.PI) / L;
+  }
+  return 0;
+}
+// at rest = stopped on the counter, with nothing (slope or belt) about to move it again
+const atRest = (lv, s) => !s.falling && s.crash === 0 && s.v === 0 && beltAt(lv, s.x) === 0 && Math.abs(SLOPE_G * slopeAt(lv, s.x)) <= decelAt(lv, s.x);
 
 function newShake(x, flavor) { return { x, px: x, v: 0, y: 0, vy: 0, rot: 0, vr: 0, falling: false, lost: false, gone: false, crash: 0, crashDir: 1, flavor, spawn: 0, landed: false }; }
 
 // One physics step for a single shake (no collisions). Returns an event string or null.
+// s.y is how far the glass sits below the plain counter top (negative = up on a ramp or in the air).
 function stepShake(lv, s, dt) {
   if (s.gone) return null;
   s.px = s.x;
@@ -510,30 +619,43 @@ function stepShake(lv, s, dt) {
   }
   let ev = null;
   if (!s.falling) {
-    if (!supported(lv, s.x)) { s.falling = true; s.vy = 0; ev = 'edge'; }
-    else {
-      const bs = beltAt(lv, s.x), d = decelAt(lv, s.x) * dt;
-      let rel = s.v - bs;
+    const sl = slopeAt(lv, s.x), aS = -SLOPE_G * sl, bs = beltAt(lv, s.x), dec = decelAt(lv, s.x);
+    let rel = s.v - bs;
+    if (rel !== 0 || Math.abs(aS) > dec) {
+      rel += aS * dt;
+      const d = dec * dt;
       rel = Math.abs(rel) <= d ? 0 : rel - Math.sign(rel) * d;
-      s.v = rel + bs;
     }
+    s.v = rel + bs;
+    const nx = s.x + s.v * dt;
+    if (!supported(lv, nx)) { s.x = nx; s.falling = true; s.vy = -s.v * sl; return 'edge'; }
+    const h0 = heightAt(lv, s.x), h1 = heightAt(lv, nx), step = Math.abs(s.v * dt);
+    if (h1 - h0 > step * 1.5 + 3) { s.v = -s.v * .3; return 'wall'; }              // rolled back into a jump's lip
+    if (h0 - h1 > step * 1.2 + 2) { s.x = nx; s.falling = true; s.vy = -s.v * sl; return 'launch'; }
+    s.x = nx; s.y = -h1;
+    s.rot = lerp(s.rot, -Math.atan(slopeAt(lv, s.x)), .35);
+    return null;
   }
-  if (s.falling) {
-    s.vy += GRAV * dt; s.y += s.vy * dt;
-    if (!s.lost && s.y >= LAND_TOL) { s.lost = true; ev = 'drop'; }
-    if (!s.lost && supported(lv, s.x + s.v * dt)) {
-      // land on the far lip: snap onto the counter so a slow frame can't drop it back into the gap
-      const nx = s.x + s.v * dt, seg = lv.segs.find(g => nx >= g[0] && nx <= g[1]);
-      if (seg && !supported(lv, s.x)) s.x = s.v >= 0 ? seg[0] + .5 : seg[1] - .5;
-      s.y = 0; s.vy = 0; s.falling = false; s.v *= .9; ev = 'land';
-    }
-    if (s.lost) {
-      if (supported(lv, s.x + s.v * dt)) s.v = -s.v * .2;  // knocks against the far wall of a gap
-      s.vr += s.v * .00012; s.rot += s.vr; s.v *= .995;
-      if (s.y > 420) { s.gone = true; return 'smash'; }
-    }
-  }
-  s.x += s.v * dt;
+  // airborne: over a jump, across a gap, or dropping off the counter
+  const py = s.y;
+  s.vy += GRAV * dt; s.y += s.vy * dt;
+  const nx = s.x + s.v * dt;
+  if (supported(lv, nx)) {
+    const g = -heightAt(lv, nx);
+    if (s.y >= g) {
+      if (!s.lost && py <= g + LAND_TOL) {
+        const hard = s.vy > 450;
+        s.x = nx; s.y = g; s.vy = 0; s.falling = false; s.v *= hard ? .8 : .9;
+        return hard ? 'thud' : 'land';
+      }
+      s.v = -s.v * .2;                                   // knocks against the wall of a gap
+    } else s.x = nx;
+  } else s.x = nx;
+  if (!s.lost && s.y > LAND_TOL && !supported(lv, s.x)) { s.lost = true; ev = 'drop'; }
+  if (s.lost) {
+    s.vr += s.v * .00012; s.rot += s.vr; s.v *= .995;
+    if (s.y > 420) { s.gone = true; return 'smash'; }
+  } else s.rot = lerp(s.rot, clamp(-s.vy * .0006, -.35, .35), .1);
   return ev;
 }
 
@@ -543,13 +665,13 @@ function simThrow(lv, v0) {
   for (let i = 0; i < 120 * 30; i++) {
     stepShake(lv, s, 1 / 120);
     if (s.lost || s.gone) return { x: s.x, fell: true };
-    if (!s.falling && s.v === 0) return { x: s.x, fell: false };
+    if (atRest(lv, s)) return { x: s.x, fell: false };
   }
   return { x: s.x, fell: false };
 }
 function calcVmax(lv) {
   const target = lv.zone[1] + Math.max(240, (lv.zone[1] - lv.zone[0]) * 1.2);
-  for (let v = 200; v < 4000; v += 8) {
+  for (let v = 200; v < 4000; v += 10) {
     const r = simThrow(lv, v);
     if (r.x >= target || (r.fell && r.x > lv.zone[1])) return v;
   }
@@ -692,7 +814,7 @@ function update(dt) {
 
   if (game.phase === 'moving') {
     game.moveT += dt;
-    const busy = game.shakes.some(s => !s.gone && (s.v !== 0 || s.falling || s.crash > 0));
+    const busy = game.shakes.some(s => !s.gone && !atRest(game.lv, s));
     if (!busy || game.moveT > 16) judge();
   } else if (game.phase === 'judge') {
     game.judgeT -= dt;
@@ -710,10 +832,13 @@ function physics(dt) {
     for (const s of game.shakes) {
       const ev = stepShake(lv, s, sdt);
       if (ev === 'drop') { Sound.fx.fall(); }
-      else if (ev === 'land') { Sound.fx.bump(); dust(s.x, CY, 4); }
+      else if (ev === 'land') { Sound.fx.bump(); dust(s.x, CY + s.y, 4); }
+      else if (ev === 'thud') { Sound.fx.thunk(); dust(s.x, CY + s.y, 9); }
+      else if (ev === 'launch') { Sound.fx.whoosh(); }
+      else if (ev === 'wall') { Sound.fx.thunk(); }
       else if (ev === 'smash') { Sound.fx.shatter(); shards(s.x, CY + 200, s.flavor); }
       else if (ev === 'crashdone') {}
-      if (s.gone || s.crash > 0 || s.y > LAND_TOL) continue;
+      if (s.gone || s.crash > 0 || s.y > LAND_TOL || (s.falling && s.y < -25)) continue;   // flying shakes clear props
       // blockers: bottles + closed gates
       for (const o of lv.obs) collideBlock(s, o.x, o.hw, false, o);
       for (const g of lv.gates) {
@@ -802,14 +927,15 @@ function levelComplete() {
   const i = game.lv.idx;
   save.stars[i] = Math.max(save.stars[i] || 0, stars); persist();
   Sound.fx.fanfare();
-  const last = i === LEVELS.length - 1;
-  document.getElementById('doneTitle').textContent = last ? 'Head Shake Slider!' : 'Order Up!';
-  document.getElementById('doneStars').innerHTML = [0, 1, 2].map(k => `<span class="${k < stars ? 'on' : ''}"></span>`).join('');
-  document.getElementById('doneStars').setAttribute('aria-label', `${stars} of 3 stars`);
-  document.getElementById('doneMsg').textContent = last
-    ? `You served every counter in town${game.misses ? ` with ${game.misses} spill${game.misses > 1 ? 's' : ''} on the last one` : ' — flawless'}.`
-    : game.misses === 0 ? 'Three for three. Not a drop spilled.' : `${game.misses} miss${game.misses > 1 ? 'es' : ''} on the way. ${stars < 3 ? 'Go again for 3 stars?' : ''}`;
-  document.getElementById('doneNext').hidden = last;
+  const wi = game.lv.wi, li = game.lv.li, last = i === LEVEL_COUNT - 1, mapEnd = li === LEVELS_PER_MAP - 1;
+  $('doneTitle').textContent = last ? 'Head Shake Slider!' : mapEnd ? 'Map Complete!' : 'Order Up!';
+  $('doneStars').innerHTML = [0, 1, 2].map(k => `<span class="${k < stars ? 'on' : ''}"></span>`).join('');
+  $('doneStars').setAttribute('aria-label', `${stars} of 3 diamonds`);
+  $('doneMsg').textContent = last ? 'Every counter in town is served. You beat all 120 levels!'
+    : mapEnd ? (mapUnlocked(wi + 1) ? `${WORLDS[wi + 1].name} is open. New counter, new tricks.` : `Beat every ${WORLDS[wi].name} level to open ${WORLDS[wi + 1].name}.`)
+    : game.misses === 0 ? 'Three for three. Not a drop spilled.' : `${game.misses} miss${game.misses > 1 ? 'es' : ''} on the way. ${stars < 3 ? 'Go again for 3 diamonds?' : ''}`;
+  $('doneNext').hidden = last || (mapEnd && !mapUnlocked(wi + 1));
+  $('doneNext').textContent = mapEnd ? 'Next Map' : 'Next';
   setTimeout(() => { if (game.phase === 'done') showScreen('done'); }, 650);
 }
 
@@ -1044,16 +1170,44 @@ function drawCounter(c, lv, T, cam) {
   c.fillStyle = '#4fb853'; c.fillRect(z0, CY + 29, z1 - z0, 2.5);
   for (const s of lv.surf) drawSurface(c, s);
   for (const bl of lv.belts) drawBelt(c, bl);
+  for (const r of lv.ramps) drawRamp(c, r, T);
   for (const [g0, g1] of lv.gaps) { c.fillStyle = 'rgba(0,0,0,.14)'; c.fillRect(g0, CY + 30, g1 - g0, VH - CY); }
+}
+// ramps and jumps rise out of the slab in the counter's own colors
+function drawRamp(c, r, T) {
+  const top = CY - 7, L = r.b - r.a, jump = r.k === 'jump';
+  const path = () => {
+    c.beginPath(); c.moveTo(r.a, top + 13);
+    for (let x = r.a; x <= r.b; x += 4) c.lineTo(x, top - rampH(r, Math.min(x, r.b - .01)));
+    if (jump) c.lineTo(r.b, top - r.h);
+    c.lineTo(r.b, top + 13); c.closePath();
+  };
+  path(); c.fillStyle = T.front; c.fill();
+  // sheen stripes like the slab top
+  c.save(); path(); c.clip(); c.fillStyle = T.topStripe; c.globalAlpha = .35;
+  for (let k = Math.floor(r.a / 42) * 42; k < r.b + 40; k += 42) { c.beginPath(); c.moveTo(k, top + 13); c.lineTo(k + 30, top - r.h - 20); c.lineTo(k + 40, top - r.h - 20); c.lineTo(k + 10, top + 13); c.fill(); }
+  c.restore();
+  // riding surface
+  c.strokeStyle = T.topFace; c.lineWidth = 7; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.beginPath(); for (let x = r.a; x <= r.b - 1; x += 4) { const y = top - rampH(r, x) + 2; x === r.a ? c.moveTo(x, y) : c.lineTo(x, y); } c.stroke();
+  if (jump) {
+    // lip face with a hazard band and an arrow
+    c.fillStyle = '#ffd23a'; c.fillRect(r.b - 9, top - r.h, 9, r.h + 13);
+    c.fillStyle = INK; for (let y = top - r.h; y < top + 13; y += 10) c.fillRect(r.b - 9, y, 9, 5);
+    c.fillStyle = '#ffffff'; const mx = r.a + L * .62, my = top - rampH(r, mx) * .45 + 4;
+    c.beginPath(); c.moveTo(mx - 10, my - 5); c.lineTo(mx + 2, my - 5); c.lineTo(mx + 2, my - 10); c.lineTo(mx + 12, my); c.lineTo(mx + 2, my + 10); c.lineTo(mx + 2, my + 5); c.lineTo(mx - 10, my + 5); c.closePath(); c.fill();
+  }
+  c.strokeStyle = T.frontEdge; c.lineWidth = 2;
+  c.beginPath(); for (let x = r.a; x <= r.b - 1; x += 4) { const y = top - rampH(r, x) - 1.5; x === r.a ? c.moveTo(x, y) : c.lineTo(x, y); } c.stroke();
 }
 function drawSurface(c, s) {
   const w = s.b - s.a;
-  if (s.k === 'syrup') {
-    c.fillStyle = '#7a1f2a';
+  if (s.k === 'syrup' || s.k === 'goo') {
+    c.fillStyle = s.k === 'goo' ? '#3fae4a' : '#7a1f2a';
     c.beginPath(); c.ellipse(s.a + w / 2, CY - 2, w / 2, 6, 0, 0, 7); c.fill();
     c.fillRect(s.a + 6, CY - 2, w - 12, 10);
     for (let i = 0; i < w / 40; i++) { const x = s.a + 20 + i * 40 + hash(i + s.a) * 12; c.beginPath(); c.ellipse(x, CY + 16 + hash(i) * 6, 5, 9 + hash(i + 1) * 8, 0, 0, 7); c.fill(); }
-    c.fillStyle = '#b8485a'; spindle(c, s.a + w * .2, CY - 3, w * .35, 3, 0);
+    c.fillStyle = s.k === 'goo' ? '#8ef08f' : '#b8485a'; spindle(c, s.a + w * .2, CY - 3, w * .35, 3, 0);
   } else if (s.k === 'ice' || s.k === 'wet' || s.k === 'oil') {
     c.fillStyle = s.k === 'ice' ? '#d4f6ff' : s.k === 'wet' ? '#8a5a36' : '#2a1f3c';
     c.fillRect(s.a, CY - 7, w, 13);
@@ -1284,13 +1438,16 @@ function drawHUD(c, lv) {
   drawLogo(c, L + 118, Tp + 70, 1.12);
   // level card: white skewed card over a pink one
   const narrow = VW < 640, sx = narrow ? Math.max(VW / 2, L + 250 + 80) : VW * .5, sy = Tp + (narrow ? 200 : 150);
-  c.save(); c.translate(sx, sy); c.scale(narrow ? .85 : 1, narrow ? .85 : 1);
+  // fade the card while a flying shake passes behind it
+  const behind = game.shakes.some(o => !o.gone && Math.abs(o.x - game.cam - sx) < 190 && CY + o.y - 150 < sy + 70);
+  game.cardA = lerp(game.cardA === undefined ? 1 : game.cardA, behind ? .25 : 1, .2);
+  c.save(); c.globalAlpha = game.cardA; c.translate(sx, sy); c.scale(narrow ? .85 : 1, narrow ? .85 : 1);
   c.fillStyle = '#f1428a';
   c.beginPath(); c.moveTo(-142, -38); c.lineTo(116, -64); c.lineTo(140, 52); c.lineTo(-118, 70); c.closePath(); c.fill();
   c.fillStyle = '#fffcff';
   c.beginPath(); c.moveTo(-158, -44); c.lineTo(150, -56); c.lineTo(132, 56); c.lineTo(-130, 66); c.closePath(); c.fill();
   c.fillStyle = INK; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.font = '700 40px "Oswald", "Arial Narrow", sans-serif'; c.fillText(`Level ${lv.idx + 1}`, 0, -12);
+  c.font = '700 40px "Oswald", "Arial Narrow", sans-serif'; c.fillText(`Level ${lv.li + 1}`, 0, -12);
   c.fillRect(-46, 31, 92, 4);
   for (let k = 0; k < SHAKES_PER_LEVEL; k++) {
     const dx = -46 + k * 46, done = k < game.landedN;
@@ -1347,22 +1504,30 @@ function showScreen(id) {
   for (const s of ['title', 'worlds', 'pause', 'done', 'shakes', 'how']) $(s).hidden = s !== id;
   $('pauseBtn').hidden = !(game.screen === 'game' && !id);
 }
+const MAP_COLORS = ['#ef428e', '#3b2470', '#e08a3c', '#1b2456'];
+const mapStars = wi => save.stars.slice(wi * LEVELS_PER_MAP, (wi + 1) * LEVELS_PER_MAP);
+const mapUnlocked = wi => wi === 0 || (wi < WORLDS.length && mapStars(wi - 1).every(v => v > 0));
+// the map's first unbeaten level, or level 1 again once the whole map is beaten
+function mapNext(wi) {
+  const st = mapStars(wi), k = st.findIndex(v => !v);
+  return wi * LEVELS_PER_MAP + (k < 0 ? 0 : k);
+}
 function buildWorlds() {
-  const swatch = ['#ef428e', '#3b2470', '#e08a3c', '#1b2456'];
   $('worldList').innerHTML = WORLDS.map((w, wi) => {
-    const got = save.stars.slice(wi * 5, wi * 5 + 5).reduce((a, b) => a + b, 0);
-    return `<div class="world" style="background:${swatch[wi]}">
-      <div class="wname"><span>${w.name}</span><small>◆ ${got}/15</small></div>
-      <span class="wtag">${w.tag}</span>
-      <div class="levels">${[0, 1, 2, 3, 4].map(k => {
-        const i = wi * 5 + k, open = i === 0 || save.stars[i - 1] > 0, st = save.stars[i] || 0;
-        return `<button class="lvl" data-lvl="${i}" ${open ? '' : 'disabled'} aria-label="Level ${i + 1}${open ? '' : ' (locked)'}">${open ? i + 1 : '–'}<span class="st">${open ? `<b>${'◆'.repeat(st)}</b>${'◇'.repeat(3 - st)}` : ''}</span></button>`;
-      }).join('')}</div></div>`;
+    const st = mapStars(wi), beaten = st.filter(v => v > 0).length, got = st.reduce((a, b) => a + b, 0), open = mapUnlocked(wi);
+    const status = !open ? `Beat all ${LEVELS_PER_MAP} ${WORLDS[wi - 1].name} levels to unlock`
+      : beaten === LEVELS_PER_MAP ? 'Complete! Tap to replay' : `Level ${beaten + 1} of ${LEVELS_PER_MAP}`;
+    return `<button class="mapcard" data-map="${wi}" style="--c:${MAP_COLORS[wi]}" ${open ? '' : 'disabled'}>
+      <span class="mname"><span>${open ? '' : '🔒 '}${w.name}</span><small>Map ${wi + 1}</small></span>
+      <span class="mtag">${w.tag}</span>
+      <span class="mbar"><i style="width:${beaten / LEVELS_PER_MAP * 100}%"></i></span>
+      <span class="mfoot"><span>${status}</span><span>◆ ${got}/${LEVELS_PER_MAP * 3}</span></span>
+    </button>`;
   }).join('');
 }
 $('worldList').addEventListener('click', e => {
-  const b = e.target.closest('.lvl'); if (!b || b.disabled) return;
-  Sound.init(); Sound.fx.click(); startLevel(+b.dataset.lvl);
+  const b = e.target.closest('.mapcard'); if (!b || b.disabled) return;
+  Sound.init(); Sound.fx.click(); startLevel(mapNext(+b.dataset.map));
 });
 $('playBtn').onclick = () => { Sound.init(); Sound.fx.click(); startLevel(nextLevel()); };
 $('levelsBtnT').onclick = () => { Sound.init(); Sound.fx.click(); buildWorlds(); showScreen('worlds'); };
@@ -1370,20 +1535,20 @@ $('shakesBtn').onclick = () => { Sound.init(); Sound.fx.click(); buildFlavors();
 $('howBtn').onclick = () => { Sound.init(); Sound.fx.click(); showScreen('how'); };
 $('shakesBack').onclick = () => { Sound.fx.click(); toTitle(); };
 $('howBack').onclick = () => { Sound.fx.click(); showScreen('title'); };
-// first unlocked level you haven't beaten yet (or the last one once everything is beaten)
+// continue on the newest unlocked map
 function nextLevel() {
-  for (let i = 0; i < LEVELS.length; i++) if (!save.stars[i]) return i;
-  return LEVELS.length - 1;
+  let wi = 0; while (wi + 1 < WORLDS.length && mapUnlocked(wi + 1)) wi++;
+  return mapNext(wi);
 }
-function updatePlaySub() { $('playSub').textContent = `Level ${nextLevel() + 1}`; }
+function updatePlaySub() { const i = nextLevel(); $('playSub').textContent = `Map ${Math.floor(i / LEVELS_PER_MAP) + 1} · Level ${i % LEVELS_PER_MAP + 1}`; }
 const totalStars = () => save.stars.reduce((a, b) => a + (b || 0), 0);
 const SHAKE_MENU = [
   { id: 'mix', name: 'Mix', need: 0, note: 'Changes each counter' },
   { id: 'choc', name: 'Chocolate', need: 0 },
-  { id: 'straw', name: 'Strawberry', need: 6 },
-  { id: 'vanilla', name: 'Vanilla', need: 15 },
-  { id: 'mint', name: 'Mint', need: 27 },
-  { id: 'galaxy', name: 'Galaxy', need: 42 },
+  { id: 'straw', name: 'Strawberry', need: 15 },
+  { id: 'vanilla', name: 'Vanilla', need: 45 },
+  { id: 'mint', name: 'Mint', need: 90 },
+  { id: 'galaxy', name: 'Galaxy', need: 150 },
 ];
 function pickFlavor(wi) {
   const f = SHAKE_MENU.find(m => m.id === save.flavor);
@@ -1392,7 +1557,7 @@ function pickFlavor(wi) {
 }
 function buildFlavors() {
   const have = totalStars();
-  $('shakeStars').textContent = `You have ${have} of 60 diamonds`;
+  $('shakeStars').textContent = `You have ${have} of ${LEVEL_COUNT * 3} diamonds`;
   $('flavorList').innerHTML = SHAKE_MENU.map(m => {
     const open = have >= m.need, on = (save.flavor || 'mix') === m.id;
     return `<button class="flav" data-f="${m.id}" aria-pressed="${on}" ${open ? '' : 'disabled'}><canvas width="128" height="184"></canvas>${m.name}<small>${open ? (m.note || (on ? 'Selected' : 'Tap to use')) : `◆ ${m.need} to unlock`}</small></button>`;
@@ -1423,7 +1588,7 @@ $('restartBtn').onclick = () => { Sound.fx.click(); startLevel(game.lv.idx); };
 $('levelsBtn').onclick = () => { Sound.fx.click(); game.screen = 'menu'; game.paused = false; buildWorlds(); showScreen('worlds'); };
 $('doneLevels').onclick = () => { Sound.fx.click(); game.screen = 'menu'; buildWorlds(); showScreen('worlds'); };
 $('doneRetry').onclick = () => { Sound.fx.click(); startLevel(game.lv.idx); };
-$('doneNext').onclick = () => { Sound.fx.click(); startLevel(Math.min(LEVELS.length - 1, game.lv.idx + 1)); };
+$('doneNext').onclick = () => { Sound.fx.click(); startLevel(Math.min(LEVEL_COUNT - 1, game.lv.idx + 1)); };
 function syncToggles() {
   ['musT1', 'musT2'].forEach(id => $(id).setAttribute('aria-pressed', String(save.music)));
   ['sfxT1', 'sfxT2'].forEach(id => $(id).setAttribute('aria-pressed', String(save.sfx)));
@@ -1444,9 +1609,9 @@ requestAnimationFrame(frame);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {});
 
 // test hook: rolls out every throw strength on each level and reports the landing window
-window.__shakeSliderTest = () => LEVELS.map((L, i) => {
+window.__shakeSliderTest = (from = 0, to = LEVEL_COUNT) => Array.from({ length: to - from }, (_, k) => from + k).map(i => {
   const lv = buildLevel(i);
-  return { level: i + 1, courses: lv.courses.map(c => Math.round(c.win * lv.meter / 2 * 1000) + 'ms').join(' / '), zones: lv.courses.map(c => Math.round(c.g[0])).join(' / ') };
+  return { map: lv.wi + 1, level: lv.li + 1, hazards: [...lv.surf.map(o => o.k), ...lv.ramps.map(o => o.k), ...lv.gaps.map(() => 'gap'), ...lv.belts.map(() => 'belt'), ...lv.gates.map(o => o.k), ...lv.obs.map(o => o.k)].join(','), courses: lv.courses.map(c => Math.round(c.win * lv.meter / 2 * 1000) + 'ms').join(' / '), zones: lv.courses.map(c => Math.round(c.g[0])).join(' / ') };
 });
 </script>
 </body>
