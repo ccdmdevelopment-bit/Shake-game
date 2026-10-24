@@ -1,6 +1,6 @@
 # Shake Slider
 
-A flat-cartoon diner milkshake-sliding game. Hold to wind up, let go to slide the shake down the counter, and stop it in the green zone. Land 3 shakes per level without knocking the others off.
+A flat-cartoon diner milkshake-sliding game. Hold to wind up, let go to slide the shake down the counter, and stop it in the green zone. Land 3 shakes per level. After each landing the shake is served and the counter shuffles into a new course (same counter, moved green zone and hazards).
 
 Open `index.html` in a browser (phone or desktop). Everything is in that one file: graphics are drawn on a canvas and all sound and music are synthesized with WebAudio.
 

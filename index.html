@@ -151,7 +151,7 @@ body{font-family:var(--body);color:var(--ink);touch-action:none;-webkit-user-sel
     <ol class="steps">
       <li><b>Hold</b><span>Press and hold anywhere. The green arrow grows and shrinks.</span></li>
       <li><b>Let go</b><span>Release to slide the shake. A longer arrow means a faster slide.</span></li>
-      <li><b>Stop in the green</b><span>Land 3 shakes per level. Landed shakes stay put, so don’t knock them off.</span></li>
+      <li><b>Stop in the green</b><span>Land 3 shakes per level. After each one, the counter shuffles into a new course.</span></li>
     </ol>
     <div class="hazards">
       <span><i style="background:#7a1f2a"></i>Syrup &amp; sand slow you</span>
@@ -231,7 +231,7 @@ const WORLDS = [
 const LEVELS = [
   // --- Main Street Diner
   { end: 1150, zone: [760, 1020], tip: 'Hold to wind up — let go to slide!' },
-  { end: 1350, zone: [1000, 1230], tip: 'Landed shakes stay put. Don’t knock them off!' },
+  { end: 1350, zone: [1000, 1230], tip: 'Each shake gets a new course. Watch the green move!' },
   { end: 1550, zone: [1180, 1380], surf: [{ k: 'syrup', a: 600, b: 780 }], tip: 'Sticky syrup slows your shake down' },
   { end: 1600, zone: [1150, 1340], surf: [{ k: 'syrup', a: 480, b: 620 }], obs: [{ k: 'bottle', x: 1378 }], tip: 'Bounce off the ketchup — gently!' },
   { end: 1800, zone: [1380, 1550], surf: [{ k: 'syrup', a: 1050, b: 1150 }], gates: [{ k: 'dome', x: 800, p: 2.6 }], tip: 'Time it so the pie dome is up' },
@@ -346,6 +346,7 @@ const Sound = (() => {
       chime(1047, t + .5, .2); chime(1319, t + .58, .16); chime(1568, t + .66, .14);
     },
     whoosh() { const t = now(); noise(t, .4, .2, 'bandpass', 1200, sfxG, .8); },
+    morph() { const t = now(); [392, 494, 587, 784].forEach((f, i) => tone(f, 'triangle', t + .12 + i * .07, .16, .1)); tone(180, 'sine', t, .9, .06, sfxG, 520); },
   };
 
   function setSlide(level) {
@@ -401,21 +402,92 @@ const Sound = (() => {
 /* =====================================================================
    LEVEL + PHYSICS
    ===================================================================== */
-function buildLevel(idx) {
+function buildLevel(idx, noCourses) {
   const wi = Math.floor(idx / 5), W = WORLDS[wi], L = LEVELS[idx];
-  const gaps = (L.gaps || []).slice().sort((a, b) => a[0] - b[0]);
-  const segs = []; let a = -600;
-  for (const g of gaps) { segs.push([a, g[0]]); a = g[1]; }
-  segs.push([a, L.end]);
+  const gaps = (L.gaps || []).map(g => g.slice()).sort((a, b) => a[0] - b[0]);
   const lv = {
-    idx, wi, world: W, end: L.end, zone: L.zone, segs, gaps, tip: L.tip || '',
-    surf: L.surf || [], belts: L.belts || [],
+    idx, wi, world: W, end: L.end, zone: L.zone.slice(), segs: [], gaps, tip: L.tip || '',
+    surf: (L.surf || []).map(o => ({ ...o })), belts: (L.belts || []).map(o => ({ ...o })),
     obs: (L.obs || []).map(o => ({ ...o, hw: 15 })),
     gates: (L.gates || []).map(g => ({ ...g, hw: g.k === 'laser' ? 5 : g.k === 'crab' ? 26 : 34, open: 1, wasBlocked: false })),
     decel: W.decel, meter: W.meter - (idx % 5) * .06,
   };
+  rebuildSegs(lv);
   lv.vmax = calcVmax(lv);
+  if (!noCourses) lv.courses = makeCourses(lv);
   return lv;
+}
+function rebuildSegs(lv) {
+  const segs = []; let a = -600;
+  for (const g of lv.gaps) { segs.push([a, g[0]]); a = g[1]; }
+  segs.push([a, lv.end]); lv.segs = segs;
+}
+
+// ---------- courses: every shake in a level gets the same counter, rearranged ----------
+function geomOf(lv) {
+  return [lv.zone[0], lv.zone[1], lv.end, ...lv.gaps.flat(), ...lv.surf.flatMap(o => [o.a, o.b]),
+    ...lv.belts.flatMap(o => [o.a, o.b]), ...lv.obs.map(o => o.x), ...lv.gates.map(o => o.x)];
+}
+function applyGeom(lv, g) {
+  let i = 0;
+  lv.zone = [g[i++], g[i++]]; lv.end = g[i++];
+  for (const o of lv.gaps) { o[0] = g[i++]; o[1] = g[i++]; }
+  for (const o of lv.surf) { o.a = g[i++]; o.b = g[i++]; }
+  for (const o of lv.belts) { o.a = g[i++]; o.b = g[i++]; }
+  for (const o of lv.obs) o.x = g[i++];
+  for (const o of lv.gates) o.x = g[i++];
+  rebuildSegs(lv);
+}
+function mulberry32(a) {
+  return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+// share of the power meter that lands a lone shake in the green (gates ignored)
+function landWindow(lv, n = 300) {
+  let ok = 0;
+  for (let k = 0; k <= n; k++) { const r = simThrow(lv, powerToV(lv, k / n)); if (!r.fell && r.x >= lv.zone[0] && r.x <= lv.zone[1]) ok++; }
+  return ok / n;
+}
+// Course 1 is the hand-made layout. Courses 2 and 3 slide the green zone along the counter,
+// trim it a little, and nudge every hazard. A seeded shuffle keeps them the same every play,
+// and each candidate is simulated so it stays about as winnable as the original.
+function makeCourses(lv) {
+  const base = geomOf(lv), baseWin = landWindow(lv), [z0, z1] = lv.zone;
+  const courses = [{ g: base, o: lv.gates.map(g => g.o || 0), vmax: lv.vmax, win: baseWin }];
+  for (let stage = 1; stage < SHAKES_PER_LEVEL; stage++) {
+    const rnd = mulberry32(lv.idx * 7919 + stage * 104729);
+    let pick = null;
+    for (let tries = 0; tries < 60 && !pick; tries++) {
+      applyGeom(lv, base);
+      const w = (z1 - z0) * (1 - stage * .04 - rnd() * .04), c = (z0 + z1) / 2 + (rnd() * 2 - 1) * 200;
+      const nz0 = c - w / 2, nz1 = c + w / 2, lim = nz0 - 50;
+      if (nz0 < START_X + 380) continue;
+      const anchor = x => nz1 + (x - z1);          // things past the green ride along with it
+      let bad = false;
+      const shift = (a, b) => {
+        if (a >= z1) return [anchor(a), anchor(b)];
+        const d = (rnd() * 2 - 1) * 130; let na = a + d, nb = b + d;
+        if (nb > lim) { na -= nb - lim; nb = lim; }
+        if (na < START_X + 90) bad = true;
+        return [na, nb];
+      };
+      const gapSpans = [], other = [];
+      lv.zone = [nz0, nz1]; lv.end = anchor(lv.end);
+      for (const o of lv.gaps) { [o[0], o[1]] = shift(o[0], o[1]); gapSpans.push(o); }
+      for (const o of [...lv.surf, ...lv.belts]) { [o.a, o.b] = shift(o.a, o.b); other.push([o.a, o.b]); }
+      for (const o of [...lv.obs, ...lv.gates]) { o.x = shift(o.x, o.x)[0]; other.push([o.x - 45, o.x + 45]); }
+      const hit = (p, q, m) => p[0] < q[1] + m && q[0] < p[1] + m;
+      for (const g of gapSpans) {
+        if (other.some(o => hit(g, o, 25)) || gapSpans.some(h => h !== g && hit(g, h, 80))) bad = true;
+      }
+      if (bad) continue;
+      rebuildSegs(lv); lv.vmax = calcVmax(lv);
+      const win = landWindow(lv);
+      if (win >= Math.max(.04, baseWin * .72)) pick = { g: geomOf(lv), o: lv.gates.map(g => rnd() * g.p), vmax: lv.vmax, win };
+    }
+    courses.push(pick || courses[0]);
+  }
+  applyGeom(lv, base); lv.vmax = courses[0].vmax;
+  return courses;
 }
 const supported = (lv, x) => lv.segs.some(s => x >= s[0] && x <= s[1]);
 function decelAt(lv, x) {
@@ -449,7 +521,12 @@ function stepShake(lv, s, dt) {
   if (s.falling) {
     s.vy += GRAV * dt; s.y += s.vy * dt;
     if (!s.lost && s.y >= LAND_TOL) { s.lost = true; ev = 'drop'; }
-    if (!s.lost && supported(lv, s.x + s.v * dt)) { s.y = 0; s.vy = 0; s.falling = false; s.v *= .9; ev = 'land'; }
+    if (!s.lost && supported(lv, s.x + s.v * dt)) {
+      // land on the far lip: snap onto the counter so a slow frame can't drop it back into the gap
+      const nx = s.x + s.v * dt, seg = lv.segs.find(g => nx >= g[0] && nx <= g[1]);
+      if (seg && !supported(lv, s.x)) s.x = s.v >= 0 ? seg[0] + .5 : seg[1] - .5;
+      s.y = 0; s.vy = 0; s.falling = false; s.v *= .9; ev = 'land';
+    }
     if (s.lost) {
       if (supported(lv, s.x + s.v * dt)) s.v = -s.v * .2;  // knocks against the far wall of a gap
       s.vr += s.v * .00012; s.rot += s.vr; s.v *= .995;
@@ -535,7 +612,6 @@ function startLevel(idx) {
 function spawnShake() {
   const s = newShake(START_X, pickFlavor(game.lv.wi)); s.spawn = 0;
   game.shakes.push(s); game.cur = s;
-  game.snap = game.shakes.filter(o => o !== s).map(o => ({ o, x: o.x }));
 }
 
 // ---------- input ----------
@@ -572,7 +648,7 @@ function update(dt) {
     const prev = g.open; g.open = gateState(g, game.t);
     if (g.k === 'crab' && prev >= .5 && g.open < .5 && onScreen(g.x)) Sound.fx.pinch();
   }
-  for (const s of game.shakes) if (s.spawn < 1) s.spawn = Math.min(1, s.spawn + dt * 3.5);
+  for (const s of game.shakes) { if (s.spawn < 1) s.spawn = Math.min(1, s.spawn + dt * 3.5); if (s.leaveT !== undefined) s.leaveT += dt; }
 
   if (game.screen !== 'game') {               // attract mode on the title
     game.cam = lerp(game.cam, -40 + Math.sin(game.t * .15) * 40, .02);
@@ -586,6 +662,16 @@ function update(dt) {
     camTarget = T < 1.1 ? zc : T < 2.1 ? lerp(zc, ac, ease((T - 1.1) / 1)) : ac;
     game.cam = camTarget;
     if (T > 2.1) game.phase = 'aim';
+  } else if (game.phase === 'morph') {
+    const lv = game.lv, to = game.morphTo;
+    game.morphT += dt;
+    const k = ease(Math.min(1, game.morphT / 1.1));
+    applyGeom(lv, game.morphFrom.map((v, i) => lerp(v, to.g[i], k)));
+    camTarget = camZone();
+    if (game.morphT >= 1.1) {
+      lv.vmax = to.vmax; lv.gates.forEach((g, i) => g.o = to.o[i]);
+      spawnShake(); game.phase = 'intro'; game.introT = .55;
+    }
   } else if (game.phase === 'aim') {
     camTarget = camAim();
   } else if (game.phase === 'charge') {
@@ -672,11 +758,10 @@ function zapShake(s, g) {
 function judge() {
   const lv = game.lv, z = lv.zone, cur = game.cur;
   const inZone = s => !s.gone && s.crash === 0 && !s.falling && s.x >= z[0] && s.x <= z[1];
-  const prev = game.shakes.filter(s => s !== cur);
-  const ok = inZone(cur) && prev.every(inZone);
+  const ok = inZone(cur);
   Sound.setSlide(0);
   if (ok) {
-    cur.landed = true; game.landedN++;
+    cur.landed = true; cur.leaveT = -.45; game.landedN++;
     const perfect = Math.abs(cur.x - (z[0] + z[1]) / 2) < 10;
     Sound.fx.ding(perfect);
     sparkle(cur.x, CY - 80, '#ffe866', perfect ? 30 : 16);
@@ -687,7 +772,6 @@ function judge() {
     if (cur.zapped) msg = 'Zapped!';
     else if (cur.crash > 0 || (cur.gone && !cur.lost)) msg = 'Spilled!';
     else if (cur.gone || cur.lost) msg = 'Dropped it!';
-    else if (!prev.every(inZone)) msg = 'Knocked one out!';
     else if (cur.x < z[0]) msg = 'Too short!';
     else msg = 'Too far!';
     game.misses++; Sound.fx.miss();
@@ -698,12 +782,16 @@ function judge() {
   game.phase = 'judge';
 }
 function afterJudge() {
+  const old = game.cur;
+  game.shakes = [];
   if (game.result === 'ok') {
     if (game.landedN >= SHAKES_PER_LEVEL) return levelComplete();
-  } else {
-    // put the counter back the way it was before the throw
-    game.shakes = game.shakes.filter(s => s !== game.cur);
-    for (const { o, x } of game.snap) Object.assign(o, { x, px: x, v: 0, y: 0, vy: 0, rot: 0, vr: 0, falling: false, lost: false, gone: false, crash: 0, zapped: 0, spawn: o.gone ? 0 : 1 });
+    // landed: the shake is served, and the counter shuffles into the next course
+    dust(old.x, CY - 60, 10);
+    game.morphFrom = geomOf(game.lv); game.morphTo = game.lv.courses[game.landedN];
+    game.morphT = 0; game.phase = 'morph';
+    Sound.fx.whoosh(); Sound.fx.morph();
+    return;
   }
   Sound.fx.whoosh();
   spawnShake(); game.phase = 'aim';
@@ -792,7 +880,13 @@ function draw() {
   for (const g of lv.gates) if (g.k === 'laser') drawLaser(c, g, true);
   for (const o of lv.obs) drawBottle(c, o, T, theme);
   for (const g of lv.gates) if (g.k === 'dome') drawDome(c, g, theme);
-  for (const s of game.shakes) if (!s.gone) drawShake(c, s.x, CY + s.y, s.rot, s.flavor, s.spawn, s);
+  for (const s of game.shakes) {
+    if (s.gone) continue;
+    const lt = Math.max(0, s.leaveT || 0);
+    if (lt > 0) c.globalAlpha = clamp(1 - lt * 2.2, 0, 1);
+    drawShake(c, s.x, CY + s.y - lt * lt * 260, s.rot, s.flavor, s.spawn, s);
+    c.globalAlpha = 1;
+  }
   for (const g of lv.gates) if (g.k === 'laser') drawLaser(c, g, false);
   if (game.screen === 'game') drawAim(c);
   drawFx(c);
@@ -1222,8 +1316,9 @@ function drawHUD(c, lv) {
     const zx = zc - game.cam;
     c.save(); c.globalAlpha = Math.min(1, game.introT * 4);
     c.font = '38px "Anton", Impact, sans-serif'; c.textAlign = 'center'; c.lineJoin = 'round';
-    c.lineWidth = 9; c.strokeStyle = '#2f9e3a'; c.strokeText('DELIVER HERE', zx, CY - 92);
-    c.fillStyle = '#ffffff'; c.fillText('DELIVER HERE', zx, CY - 92);
+    const label = game.landedN ? 'NEW COURSE!' : 'DELIVER HERE';
+    c.lineWidth = 9; c.strokeStyle = game.landedN ? '#1e8fff' : '#2f9e3a'; c.strokeText(label, zx, CY - 92);
+    c.fillStyle = '#ffffff'; c.fillText(label, zx, CY - 92);
     c.fillStyle = '#7ad800'; c.beginPath(); c.moveTo(zx - 14, CY - 72); c.lineTo(zx + 14, CY - 72); c.lineTo(zx, CY - 54); c.fill();
     c.restore();
   }
@@ -1316,7 +1411,7 @@ $('flavorList').addEventListener('click', e => {
   game.shakes.forEach(s => s.flavor = pickFlavor(0));
 });
 $('backTitle').onclick = () => { Sound.fx.click(); toTitle(); };
-function toTitle() { updatePlaySub(); titleMode = true; resize(); game.screen = 'title'; game.lv = buildLevel(0); game.lv.end = 5000; game.lv.segs = [[-600, 5000]]; game.lv.zone = [-900, -800]; game.shakes = [newShake(START_X + 40, pickFlavor(0))]; game.shakes[0].spawn = 1; game.phase = 'attract'; Sound.setSong(0); showScreen('title'); }
+function toTitle() { updatePlaySub(); titleMode = true; resize(); game.screen = 'title'; game.lv = buildLevel(0, true); game.lv.end = 5000; game.lv.segs = [[-600, 5000]]; game.lv.zone = [-900, -800]; game.shakes = [newShake(START_X + 40, pickFlavor(0))]; game.shakes[0].spawn = 1; game.phase = 'attract'; Sound.setSong(0); showScreen('title'); }
 function togglePause(p) {
   if (game.phase === 'done') return;
   game.paused = p; if (p) pressEndSilent(); Sound.fx.click(); showScreen(p ? 'pause' : null);
@@ -1350,9 +1445,8 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {});
 
 // test hook: rolls out every throw strength on each level and reports the landing window
 window.__shakeSliderTest = () => LEVELS.map((L, i) => {
-  const lv = buildLevel(i); let ok = 0, n = 1000;
-  for (let k = 0; k <= n; k++) { const r = simThrow(lv, powerToV(lv, k / n)); if (!r.fell && r.x >= lv.zone[0] && r.x <= lv.zone[1]) ok++; }
-  return { level: i + 1, vmax: lv.vmax, window: +(ok / n).toFixed(3), ms: Math.round(ok / n * lv.meter / 2 * 1000) };
+  const lv = buildLevel(i);
+  return { level: i + 1, courses: lv.courses.map(c => Math.round(c.win * lv.meter / 2 * 1000) + 'ms').join(' / '), zones: lv.courses.map(c => Math.round(c.g[0])).join(' / ') };
 });
 </script>
 </body>
