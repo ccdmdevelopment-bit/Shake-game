@@ -38,8 +38,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .btn.alt{background:var(--lime);box-shadow:inset 0 -6px 0 var(--lime-dk)}
 .btn.ghost{background:var(--ink);box-shadow:inset 0 -6px 0 #000}
 .btn.big{font-size:40px;padding:12px 54px 18px}
-#title .stack{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
-#title svg{width:min(440px,82vw);height:auto;overflow:visible}
+#title{align-items:flex-start}
+#title .stack{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding-top:2vh}
+#title svg{width:min(420px,80vw);height:auto;overflow:visible}
+#title .actions{display:flex;flex-direction:column;align-items:center;gap:14px}
+@media (max-height:520px){#title .stack{gap:8px;padding-top:0}#title svg{width:250px}#title .tag{font-size:18px}#title .actions{flex-direction:row;gap:16px}#title .btn.big{font-size:32px;padding:8px 40px 14px}}
 #title .tag{font-family:var(--body);font-weight:700;font-size:22px;color:#fff;letter-spacing:1px;text-transform:uppercase;text-shadow:0 2px 0 var(--teal-dk)}
 .toggles{display:flex;gap:10px;justify-content:center}
 .icon{font-family:var(--body);font-weight:600;font-size:16px;background:var(--paper);border:0;padding:7px 14px;cursor:pointer;color:var(--ink);
@@ -81,10 +84,12 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
       </g>
     </svg>
     <div class="tag">Slide the shake. Stop it in the green.</div>
-    <button class="btn big" id="playBtn">Play</button>
-    <div class="toggles">
-      <button class="icon" id="musT1" aria-pressed="true">♫ Music</button>
-      <button class="icon" id="sfxT1" aria-pressed="true">Sound</button>
+    <div class="actions">
+      <button class="btn big" id="playBtn">Play</button>
+      <div class="toggles">
+        <button class="icon" id="musT1" aria-pressed="true">♫ Music</button>
+        <button class="icon" id="sfxT1" aria-pressed="true">Sound</button>
+      </div>
     </div>
   </div>
 </div>
@@ -421,12 +426,13 @@ const laserWarn = (g, t) => { const u = ((((t + (g.o || 0)) % g.p) + g.p) % g.p)
    ===================================================================== */
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let DPR = 1, CW = 0, CH = 0, K = 1, VW = 760, VH = 600, CY = 360, SAFE = { t: 0, r: 0, b: 0, l: 0 };
+let titleMode = true;   // the title screen drops the counter lower to leave room for the logo
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   CW = window.innerWidth; CH = window.innerHeight;
   cv.width = Math.round(CW * DPR); cv.height = Math.round(CH * DPR);
-  K = Math.min(CH / 600, CW / 760); VW = CW / K; VH = CH / K;
-  CY = Math.max(360, VH * .6);
+  K = Math.min(CH / 600, CW / 560); VW = CW / K; VH = CH / K;
+  CY = Math.max(360, VH * (titleMode ? .74 : .6));
   const cs = getComputedStyle(document.getElementById('safeProbe'));
   SAFE = { t: parseFloat(cs.paddingTop) / K || 0, r: parseFloat(cs.paddingRight) / K || 0, b: parseFloat(cs.paddingBottom) / K || 0, l: parseFloat(cs.paddingLeft) / K || 0 };
 }
@@ -444,6 +450,7 @@ function camZone() { return clampCam((game.lv.zone[0] + game.lv.zone[1]) / 2 - V
 function clampCam(x) { const lo = -260, hi = Math.max(lo, game.lv.end + 280 - VW); return clamp(x, lo, hi); }
 
 function startLevel(idx) {
+  titleMode = false; resize();
   game.lv = buildLevel(idx);
   game.shakes = []; game.landedN = 0; game.misses = 0; game.thrown = 0; game.t = 0;
   particles = []; texts = [];
@@ -766,9 +773,9 @@ function neonDecor(c, cam) {
   const bp = cam * .5;
   for (let r = 0; r * 34 < CY; r++) { const off = (r % 2) * 40 - (bp % 80); for (let x = off - 80; x < VW + 80; x += 80) c.fillRect(x + 2, r * 34 + 2, 76, 30); }
   tiled(cam, .6, 760, (x, i) => {
-    const y = CY - 200; if (y < 70) return;
+    const y = CY - 168;
     const on = Math.sin(game.t * 9 + i) > -.92;
-    c.save(); c.textAlign = 'center'; c.font = '52px "Anton", Impact, sans-serif';
+    c.save(); c.textAlign = 'center'; c.font = '40px "Anton", Impact, sans-serif';
     c.shadowBlur = on ? 22 : 3; c.lineWidth = 3;
     if (i % 2) { c.shadowColor = '#ff3fa4'; c.strokeStyle = on ? '#ffd1ea' : '#7a3a60'; c.strokeText('SHAKES', x + 180, y); }
     else { c.shadowColor = '#36e6ff'; c.strokeStyle = on ? '#d6fbff' : '#2a6a78'; c.strokeText('OPEN 24/7', x + 180, y); }
@@ -1192,7 +1199,7 @@ $('worldList').addEventListener('click', e => {
 });
 $('playBtn').onclick = () => { Sound.init(); Sound.fx.click(); buildWorlds(); showScreen('worlds'); };
 $('backTitle').onclick = () => { Sound.fx.click(); toTitle(); };
-function toTitle() { game.screen = 'title'; game.lv = buildLevel(0); game.lv.end = 5000; game.lv.segs = [[-600, 5000]]; game.lv.zone = [-900, -800]; game.shakes = [newShake(START_X + 40, 'choc')]; game.shakes[0].spawn = 1; game.phase = 'attract'; Sound.setSong(0); showScreen('title'); }
+function toTitle() { titleMode = true; resize(); game.screen = 'title'; game.lv = buildLevel(0); game.lv.end = 5000; game.lv.segs = [[-600, 5000]]; game.lv.zone = [-900, -800]; game.shakes = [newShake(START_X + 40, 'choc')]; game.shakes[0].spawn = 1; game.phase = 'attract'; Sound.setSong(0); showScreen('title'); }
 function togglePause(p) {
   if (game.phase === 'done') return;
   game.paused = p; if (p) pressEndSilent(); Sound.fx.click(); showScreen(p ? 'pause' : null);
