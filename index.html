@@ -775,7 +775,7 @@ function neonDecor(c, cam) {
   tiled(cam, .6, 760, (x, i) => {
     const y = CY - 168;
     const on = Math.sin(game.t * 9 + i) > -.92;
-    c.save(); c.textAlign = 'center'; c.font = '40px "Anton", Impact, sans-serif';
+    c.save(); c.textAlign = 'center'; c.font = '34px "Anton", Impact, sans-serif';
     c.shadowBlur = on ? 22 : 3; c.lineWidth = 3;
     if (i % 2) { c.shadowColor = '#ff3fa4'; c.strokeStyle = on ? '#ffd1ea' : '#7a3a60'; c.strokeText('SHAKES', x + 180, y); }
     else { c.shadowColor = '#36e6ff'; c.strokeStyle = on ? '#d6fbff' : '#2a6a78'; c.strokeText('OPEN 24/7', x + 180, y); }
